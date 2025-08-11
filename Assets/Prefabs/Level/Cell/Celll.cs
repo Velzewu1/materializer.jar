@@ -2,8 +2,6 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public enum CellState { Unknown, Fill, Empty, Lock, Error }
-
 public class Cell : MonoBehaviour, IPointerClickHandler
 {
     public int r, c;
@@ -11,18 +9,23 @@ public class Cell : MonoBehaviour, IPointerClickHandler
     public Image bg;
     PuzzleController controller;
 
-    void Awake() {
+    void Awake()
+    {
         controller = GetComponentInParent<PuzzleController>();
         if (!bg) bg = GetComponent<Image>();
-        bg.raycastTarget = true;
+        if (bg) bg.raycastTarget = true;
     }
 
-    public void Setup(int row, int col, CellState s, PuzzleController ctrl) {
+    public void Setup(int row, int col, CellState s, PuzzleController ctrl)
+    {
         r=row; c=col; controller=ctrl; SetState(s, false);
     }
 
-    public void SetState(CellState s, bool notify = true) {
+    public void SetState(CellState s, bool notify = true)
+    {
         state = s;
+        if (!controller || !bg) return;
+
         if      (s == CellState.Lock)  bg.color = controller.colLock;
         else if (s == CellState.Fill)  bg.color = controller.colFill;
         else if (s == CellState.Error) bg.color = controller.colError;
@@ -32,15 +35,18 @@ public class Cell : MonoBehaviour, IPointerClickHandler
         if (notify) controller.OnCellChanged(r, c);
     }
 
-    // ЛКМ — попытка, ПКМ — вернуть в Unknown
-    public void OnPointerClick(PointerEventData ev) {
-        if (state == CellState.Lock) return;
+    // ЛКМ: попытка закрасить; ПКМ: попытка пометить пусто
+    public void OnPointerClick(PointerEventData ev)
+    {
+        if (state == CellState.Lock || controller == null) return;
 
-        if (ev.button == PointerEventData.InputButton.Left) {
-            controller.TryReveal(r, c, this);
-        } else if (ev.button == PointerEventData.InputButton.Right) {
-            SetState(CellState.Unknown);
+        if (ev.button == PointerEventData.InputButton.Left)
+        {
+            controller.TryLeft(r, c, this);   // закрасить
+        }
+        else if (ev.button == PointerEventData.InputButton.Right)
+        {
+            controller.TryRight(r, c, this);  // пометить пусто
         }
     }
 }
-

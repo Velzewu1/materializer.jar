@@ -268,6 +268,9 @@ GameObject:
   - component: {fileID: 337805818}
   - component: {fileID: 337805817}
   - component: {fileID: 337805819}
+  - component: {fileID: 337805820}
+  - component: {fileID: 337805822}
+  - component: {fileID: 337805821}
   m_Layer: 3
   m_Name: LevelRoot
   m_TagString: Untagged
@@ -306,18 +309,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1eda668858d44d343a2c70fa33ccab6b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  level: {fileID: 11400000, guid: 0176e948cc39f074291020e868b9333c, type: 2}
+  level: {fileID: 11400000, guid: 6629553b1c4650f42906ce72bd22f46f, type: 2}
   cellPrefab: {fileID: 28198711319997572, guid: 08e6f8b9a2c4b574cbb18f7e58b7c103, type: 3}
-  padding: 8
-  spacing: 2
+  container: {fileID: 863316932}
+  matchContainer: 1
+  gridImage: {fileID: 337805821}
+  gridColor: {r: 1, g: 1, b: 1, a: 0.55}
+  paddingPx: 8
+  spacingPx: 100
   colEmpty: {r: 0, g: 0, b: 0, a: 1}
   colFill: {r: 0, g: 1, b: 0.2, a: 1}
   colLock: {r: 0.8, g: 0.1, b: 0.2, a: 1}
   colClueText: {r: 0, g: 0, b: 0, a: 1}
-  removeTextOnLock: 1
-  removeTextWhenHidden: 1
-  container: {fileID: 337805816}
-  matchContainer: 1
 --- !u!114 &337805818
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -341,7 +344,7 @@ MonoBehaviour:
   m_CellSize: {x: 100, y: 100}
   m_Spacing: {x: 0, y: 0}
   m_Constraint: 0
-  m_ConstraintCount: 2
+  m_ConstraintCount: 8
 --- !u!114 &337805819
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -354,7 +357,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fc8696751d711cb4f93381352c942a30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  level: {fileID: 11400000, guid: 0176e948cc39f074291020e868b9333c, type: 2}
+  level: {fileID: 11400000, guid: 6629553b1c4650f42906ce72bd22f46f, type: 2}
   ui: {fileID: 337805817}
   gridRoot: {fileID: 337805816}
   colUnknown: {r: 0, g: 0, b: 0, a: 1}
@@ -365,6 +368,64 @@ MonoBehaviour:
   clueOK: {r: 1, g: 1, b: 1, a: 1}
   clueBad: {r: 1, g: 0.5, b: 0.5, a: 1}
   clueSolved: {r: 0.8, g: 1, b: 0.8, a: 1}
+--- !u!114 &337805820
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 337805815}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f086d789bffb4142a79aed5e11556f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  controller: {fileID: 337805819}
+  levels:
+  - {fileID: 11400000, guid: 6629553b1c4650f42906ce72bd22f46f, type: 2}
+  - {fileID: 11400000, guid: 67198ea7f5f964d4eb7413391e849786, type: 2}
+  - {fileID: 11400000, guid: 4a38090d35912aa40bba622cb3614635, type: 2}
+  - {fileID: 11400000, guid: 801ececc909ed3f4e8e1b439141a5175, type: 2}
+  - {fileID: 11400000, guid: 0176e948cc39f074291020e868b9333c, type: 2}
+  - {fileID: 11400000, guid: 0176e948cc39f074291020e868b9333c, type: 2}
+--- !u!114 &337805821
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 337805815}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &337805822
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 337805815}
+  m_CullTransparentMesh: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -497,6 +558,7 @@ GameObject:
   - component: {fileID: 413854296}
   - component: {fileID: 413854298}
   - component: {fileID: 413854297}
+  - component: {fileID: 413854299}
   m_Layer: 3
   m_Name: Cursor
   m_TagString: Untagged
@@ -561,6 +623,26 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 413854295}
   m_CullTransparentMesh: 1
+--- !u!114 &413854299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 413854295}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c8db40122afeb14296ec58973e9090b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  safeZone: {fileID: 678446917}
+  cursorRT: {fileID: 413854296}
+  grid: {fileID: 337805817}
+  uiCamera: {fileID: 483341585}
+  sensitivity: 1
+  hotspotNormalized: {x: 0, y: 1}
+  pixelOffset: {x: 0, y: 0}
+  clampByHotspot: 1
 --- !u!1 &469243060
 GameObject:
   m_ObjectHideFlags: 0
@@ -1023,14 +1105,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8c8db40122afeb14296ec58973e9090b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  canvas: {fileID: 678446920}
-  uiCamera: {fileID: 483341585}
+  safeZone: {fileID: 0}
   cursorRT: {fileID: 413854296}
-  hideSystemCursor: 1
-  confineToCanvas: 1
-  smooth: 1
-  smoothTime: 0.03
-  debugLabel: {fileID: 0}
+  grid: {fileID: 0}
+  uiCamera: {fileID: 0}
+  sensitivity: 1
+  hotspotNormalized: {x: 0, y: 1}
+  pixelOffset: {x: 0, y: 0}
+  clampByHotspot: 1
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

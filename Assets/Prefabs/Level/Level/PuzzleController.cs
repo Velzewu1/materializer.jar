@@ -5,7 +5,7 @@ public class PuzzleController : MonoBehaviour
 {
     [Header("Refs")]
     public LevelData level;           // решение (target), locks, clues
-    public LevelUIRenderer ui;        // уже создаёт сетку
+    public LevelUIRenderer ui;        // создаёт сетку
     public RectTransform gridRoot;
 
     [Header("Colors")]
@@ -24,7 +24,25 @@ public class PuzzleController : MonoBehaviour
     Cell[,] cells;
     TextMeshProUGUI[,] clueTexts;
 
-    void Start() {
+    void Start()
+    {
+        if (ui && level && ui.level != level) ui.SetLevel(level);
+        Rebind();
+        ValidateAll();
+    }
+
+    public void SetLevel(LevelData data)
+    {
+        level = data;
+        if (ui) ui.SetLevel(data);
+        Rebind();
+        ValidateAll();
+    }
+
+    void Rebind()
+    {
+        if (!ui || !level) return;
+
         N = level.size;
         cells = new Cell[N, N];
         clueTexts = new TextMeshProUGUI[N, N];
@@ -43,23 +61,58 @@ public class PuzzleController : MonoBehaviour
 
             clueTexts[r,c] = t.GetComponentInChildren<TextMeshProUGUI>(true);
         }
-        ValidateAll();
     }
 
-    // Основная логика «попал/не попал»
-    public void TryReveal(int r, int c, Cell cell)
+    // --- Новая логика кликов ---
+    public void TryLeft(int r, int c, Cell cell)   // попытка закрасить
     {
         int idx = r * N + c;
-        bool correct = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
+        bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
 
-        cell.SetState(correct ? CellState.Fill : CellState.Error);
+        if (shouldFill)
+        {
+            cell.SetState(CellState.Fill);
+        }
+        else
+        {
+            cell.SetState(CellState.Error);
+            Punish($"Mistake: LEFT on empty at ({r},{c})");
+        }
+
         ValidateNeighborsAround(r, c);
         if (IsWin()) OnWin();
     }
 
-    public void OnCellChanged(int r, int c) { /* зарезервировано под undo/redo */ }
+    public void TryRight(int r, int c, Cell cell)  // попытка пометить пусто
+    {
+        int idx = r * N + c;
+        bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
 
+        if (shouldFill)
+        {
+            cell.SetState(CellState.Error);
+            Punish($"Mistake: RIGHT on filled at ({r},{c})");
+        }
+        else
+        {
+            cell.SetState(CellState.Empty);
+        }
+
+        ValidateNeighborsAround(r, c);
+        if (IsWin()) OnWin();
+    }
+
+    void Punish(string reason)
+    {
+        // Пока только лог. Здесь потом — уменьшение «жизней», глич экрана и т.п.
+        Debug.Log($"[Penalty] {reason}");
+    }
+
+    public void OnCellChanged(int r, int c) { /* под undo/redo */ }
+
+    // --- Подсветка клюзов ---
     void ValidateAll() {
+        if (level == null) return;
         for (int r=0; r<N; r++)
             for (int c=0; c<N; c++)
                 ValidateClue(r, c);
@@ -87,27 +140,26 @@ public class PuzzleController : MonoBehaviour
                 else if (s==CellState.Unknown) unknown++;
             }
 
-        if      (filled > clue)             tmp.color = clueBad;
+        if      (filled > clue)                tmp.color = clueBad;
         else if (filled == clue && unknown==0) tmp.color = clueSolved;
-        else                                  tmp.color = clueOK;
+        else                                   tmp.color = clueOK;
     }
 
     bool IsWin() {
-        // Все не-LOCK не Unknown/Error и совпадают с target
         for (int r=0; r<N; r++)
-            for (int c=0; c<N; c++) {
-                int idx = r*N+c;
-                if (cells[r,c].state == CellState.Lock) continue;
-                if (cells[r,c].state == CellState.Unknown || cells[r,c].state == CellState.Error)
-                    return false;
-                bool shouldBeFill = level.target[idx]==1;
-                if (shouldBeFill != (cells[r,c].state==CellState.Fill)) return false;
-            }
+        for (int c=0; c<N; c++) {
+            int idx = r*N+c;
+            if (cells[r,c].state == CellState.Lock) continue;
+            if (cells[r,c].state == CellState.Unknown || cells[r,c].state == CellState.Error)
+                return false;
+            bool shouldBeFill = level.target[idx]==1;
+            if (shouldBeFill != (cells[r,c].state==CellState.Fill)) return false;
+        }
         return true;
     }
 
     void OnWin() {
         Debug.Log("WIN!");
-        // Триггер эффекта/продолжения сюжета
+        // Триггер эффекта/продолжения сюжета позже
     }
 }
