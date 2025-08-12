@@ -43,6 +43,7 @@ public class VirtualCursor : MonoBehaviour
     {
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        if (grid) grid.ClearHighlight(); // убрать подсветку при отключении
     }
 
     void Update()
@@ -79,7 +80,15 @@ public class VirtualCursor : MonoBehaviour
         // текущая точка «клика» — hot-spot
         var pos = GetHotspotScreen();
 
-        // вычислим индекс клетки под hot-spot
+        // --- Подсветка 3×3: отключаем на время удержания любой кнопки ---
+        bool anyHeld = mouse.leftButton.isPressed || mouse.rightButton.isPressed;
+        grid.SetHoverSuppressed(anyHeld);
+        if (!anyHeld)
+            grid.HighlightAtScreen(pos, uiCamera);
+        else
+            grid.ClearHighlight();
+
+        // hit-test индекса клетки
         if (grid.TryGetCellIndexAtScreen(pos, uiCamera, out int idx, out int r, out int c))
         {
             // ЛКМ: одиночный клик + рисование при удержании (по смене idx)

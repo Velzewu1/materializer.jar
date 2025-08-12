@@ -10,16 +10,16 @@ public class LevelUIRenderer : MonoBehaviour
 
     [Header("UI")]
     public GameObject cellPrefab;
-    public RectTransform container;          // SafeZone; если null — берём свой RectTransform
+    public RectTransform container;
     public bool matchContainer = true;
 
     [Header("Grid look")]
-    public Image gridImage;                   // Image на LevelRoot, через который видны линии и рамка
-    public Color gridColor = new Color(1f,1f,1f,0.55f); // белая полупрозрачная сетка/рамка
+    public Image gridImage;
+    public Color gridColor = new Color(1f, 1f, 1f, 0.55f);
 
     [Header("Layout (px)")]
-    [Min(0)] public float spacingPx = 2f;    // толщина внутренних линий (в ПИКСЕЛЯХ)
-    [Min(0)] public float outerBorderPx = 2f;// толщина внешней рамки (в ПИКСЕЛЯХ)
+    [Min(0)] public float spacingPx = 2f;
+    [Min(0)] public float outerBorderPx = 2f;
 
     [Header("Cell colors")]
     public Color colEmpty    = new Color(0.06f,0.06f,0.06f);
@@ -27,26 +27,34 @@ public class LevelUIRenderer : MonoBehaviour
     public Color colLock     = new Color(0.8f, 0.1f, 0.2f);
     public Color colClueText = Color.white;
 
+    [Header("Hover 3x3 highlight")]
+    public bool  hoverHighlightEnabled = true;
+    public bool  highlightOnlyUnknown  = true;          // <<< ВАЖНО: подсвечивать только Unknown
+    public Color hoverNeighbor = new Color(0f, 1f, 0.5f, 0.16f);
+    public Color hoverCenter   = new Color(0f, 1f, 0.7f, 0.26f);
+
     GridLayoutGroup _grid;
     RectTransform   _rt;
-    Canvas          _canvas;
     CanvasScaler    _scaler;
-    Cell[]          _cells;
+
+    Cell[]  _cells;
+    Image[] _overlays;
+    int _hiR = -1, _hiC = -1;
+    bool _hoverSuppressed = false;
 
     float RefPPU => (_scaler ? _scaler.referencePixelsPerUnit : 100f);
     float Px2World(float px) => px / Mathf.Max(1f, RefPPU);
 
     void Awake()
     {
-        _grid   = GetComponent<GridLayoutGroup>();
-        _rt     = GetComponent<RectTransform>();
-        _canvas = GetComponentInParent<Canvas>();
-        _scaler = _canvas ? _canvas.GetComponent<CanvasScaler>() : null;
+        _grid = GetComponent<GridLayoutGroup>();
+        _rt   = GetComponent<RectTransform>();
+        var canvas = GetComponentInParent<Canvas>();
+        _scaler = canvas ? canvas.GetComponent<CanvasScaler>() : null;
 
         if (!container) container = _rt;
-        if (!gridImage) gridImage = GetComponent<Image>(); // пытаемся взять из инспектора/компонента
+        if (!gridImage) gridImage = GetComponent<Image>();
 
-        // базовые настройки грида
         _rt.anchorMin = _rt.anchorMax = new Vector2(0.5f, 0.5f);
         _rt.pivot     = new Vector2(0.5f, 0.5f);
 
@@ -60,27 +68,23 @@ public class LevelUIRenderer : MonoBehaviour
         if (level && cellPrefab) { Build(); FitCells(); }
     }
 
-    void OnEnable()                         { FitCells(); }
-    void OnRectTransformDimensionsChange()  { FitCells(); }
+    void OnEnable()                        { FitCells(); }
+    void OnRectTransformDimensionsChange() { FitCells(); }
 
-    public void SetLevel(LevelData data)
-    {
-        level = data;
-        Build();
-        FitCells();
-    }
+    public void SetLevel(LevelData data) { level = data; Build(); FitCells(); }
 
     public void Build()
     {
-        if (!level || cellPrefab == null) return;
+        ClearHighlightInternal(true);
+        if (!level || !cellPrefab) return;
 
-        // очистка
         for (int i = transform.childCount - 1; i >= 0; --i)
             DestroyImmediate(transform.GetChild(i).gameObject);
 
         int N = Mathf.Max(1, level.size);
         _grid.constraintCount = N;
-        _cells = new Cell[N * N];
+        _cells    = new Cell[N * N];
+        _overlays = new Image[N * N];
 
         for (int r = 0; r < N; r++)
         for (int c = 0; c < N; c++)
@@ -96,7 +100,6 @@ public class LevelUIRenderer : MonoBehaviour
                 rtC.anchoredPosition3D = Vector3.zero;
             }
 
-            // старт: Lock → красный, иначе — тёмный (Unknown/Empty)
             var img = go.GetComponent<Image>();
             if (img)
             {
@@ -104,14 +107,12 @@ public class LevelUIRenderer : MonoBehaviour
                 else img.color = colEmpty;
             }
 
-            // цифра (только если clue>=0 и не lock)
             var tmp = go.GetComponentInChildren<TextMeshProUGUI>(true);
             if (tmp)
             {
                 bool isLock  = (SafeGet(level.locks, i) == 1);
                 int clue     = SafeGet(level.clues, i, -1);
-                bool hasClue = (clue >= 0);
-                if (!isLock && hasClue)
+                if (!isLock && clue >= 0)
                 {
                     tmp.text = clue.ToString();
                     tmp.color = colClueText;
@@ -126,6 +127,21 @@ public class LevelUIRenderer : MonoBehaviour
 
             var cell = go.GetComponent<Cell>();
             if (cell) _cells[i] = cell;
+
+            // Overlay-слой для подсветки (поверх клетки, но raycast выключен)
+            var hlGO = new GameObject("HL", typeof(RectTransform), typeof(Image));
+            var hlRT = hlGO.GetComponent<RectTransform>();
+            hlRT.SetParent(go.transform, false);
+            hlRT.anchorMin = Vector2.zero;
+            hlRT.anchorMax = Vector2.one;
+            hlRT.offsetMin = Vector2.zero;
+            hlRT.offsetMax = Vector2.zero;
+
+            var hlImg = hlGO.GetComponent<Image>();
+            hlImg.color = hoverNeighbor;
+            hlImg.raycastTarget = false;
+            hlImg.enabled = false;
+            _overlays[i] = hlImg;
         }
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(_rt);
@@ -135,18 +151,15 @@ public class LevelUIRenderer : MonoBehaviour
     {
         if (!level) return;
 
-        // цвет линий/рамки
         if (gridImage) { gridImage.color = gridColor; gridImage.raycastTarget = false; }
 
         var host = container ? container : _rt;
         float W = Mathf.Max(0.0001f, host.rect.width);
         float H = Mathf.Max(0.0001f, host.rect.height);
 
-        // px → world (минимум 1 экранный пиксель)
         float gapWU    = Mathf.Max(Px2World(Mathf.Max(1f, spacingPx)), 0.0001f);
         float borderWU = Mathf.Max(Px2World(Mathf.Max(1f, outerBorderPx)), 0.0001f);
 
-        // доступная область под клетки — минус внешняя рамка по периметру
         float availW = Mathf.Max(0, W - 2f * borderWU);
         float availH = Mathf.Max(0, H - 2f * borderWU);
 
@@ -171,7 +184,97 @@ public class LevelUIRenderer : MonoBehaviour
         LayoutRebuilder.ForceRebuildLayoutImmediate(_rt);
     }
 
-    // ---- HIT-TEST индекса клетки по экранным координатам (для drag) ----
+    // External control (drag)
+    public void SetHoverSuppressed(bool suppressed)
+    {
+        if (_hoverSuppressed == suppressed) return;
+        _hoverSuppressed = suppressed;
+        if (suppressed) ClearHighlight();
+    }
+
+    public void ClearHighlight() => ClearHighlightInternal(false);
+
+    void ClearHighlightInternal(bool onRebuild)
+    {
+        if (_overlays == null) return;
+        if (!onRebuild && _hiR >= 0 && _hiC >= 0)
+        {
+            int N = level.size;
+            for (int dr = -1; dr <= 1; dr++)
+            for (int dc = -1; dc <= 1; dc++)
+            {
+                int rr = _hiR + dr, cc = _hiC + dc;
+                if (rr < 0 || cc < 0 || rr >= N || cc >= N) continue;
+                int id = rr * N + cc;
+                if (_overlays[id]) _overlays[id].enabled = false;
+            }
+        }
+        _hiR = _hiC = -1;
+    }
+
+    public void Highlight3x3(int r, int c)
+    {
+        if (!hoverHighlightEnabled || _hoverSuppressed || level == null) return;
+
+        ClearHighlight();
+        int N = level.size;
+
+        for (int dr = -1; dr <= 1; dr++)
+        for (int dc = -1; dc <= 1; dc++)
+        {
+            int rr = r + dr, cc = c + dc;
+            if (rr < 0 || cc < 0 || rr >= N || cc >= N) continue;
+            int id = rr * N + cc;
+
+            var img = (_overlays != null && id < _overlays.Length) ? _overlays[id] : null;
+            if (!img) continue;
+
+            // --- КЛЮЧЕВОЕ УСЛОВИЕ ---
+            // Подсвечиваем ТОЛЬКО Unknown (если флаг включён).
+            if (highlightOnlyUnknown && _cells != null && id < _cells.Length && _cells[id] != null)
+            {
+                var st = _cells[id].state;
+                if (st != CellState.Unknown)
+                {
+                    img.enabled = false;
+                    continue;
+                }
+            }
+
+            img.color   = (dr == 0 && dc == 0) ? hoverCenter : hoverNeighbor;
+            img.enabled = true;
+        }
+
+        _hiR = r; _hiC = c;
+    }
+
+    public void HighlightAtScreen(Vector2 screenPos, Camera cam)
+    {
+        if (!hoverHighlightEnabled || _hoverSuppressed || level == null) { ClearHighlight(); return; }
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_rt, screenPos, cam, out var local))
+        { ClearHighlight(); return; }
+
+        var rect = _rt.rect;
+        float x0 = local.x - rect.xMin;
+        float y0 = local.y - rect.yMin;
+        float yTop = rect.height - y0;
+
+        int N = level.size;
+        var cs = _grid.cellSize; var sp = _grid.spacing;
+
+        int c = Mathf.FloorToInt(x0 / (cs.x + sp.x));
+        int r = Mathf.FloorToInt(yTop / (cs.y + sp.y));
+        if (c < 0 || c >= N || r < 0 || r >= N) { ClearHighlight(); return; }
+
+        float cx = c * (cs.x + sp.x);
+        float cy = r * (cs.y + sp.y);
+        if (x0 > cx + cs.x || yTop > cy + cs.y) { ClearHighlight(); return; }
+
+        Highlight3x3(r, c);
+    }
+
+    // Hit-test
     public bool TryGetCellIndexAtScreen(Vector2 screenPos, Camera cam, out int idx, out int r, out int c)
     {
         idx = -1; r = -1; c = -1;
@@ -180,20 +283,18 @@ public class LevelUIRenderer : MonoBehaviour
             return false;
 
         var rect = _rt.rect;
-        float x0   = local.x - rect.xMin;          // 0..w (слева направо)
-        float y0   = local.y - rect.yMin;          // 0..h (снизу вверх)
-        float yTop = rect.height - y0;             // 0..h (сверху вниз) — startCorner=UpperLeft
+        float x0 = local.x - rect.xMin;
+        float y0 = local.y - rect.yMin;
+        float yTop = rect.height - y0;
 
-        int   N    = Mathf.Max(1, level.size);
-        var   cell = _grid.cellSize;
-        var   sp   = _grid.spacing;
+        int N = Mathf.Max(1, level.size);
+        var cell = _grid.cellSize; var sp = _grid.spacing;
 
-        c = Mathf.FloorToInt( x0   / (cell.x + sp.x) );
-        r = Mathf.FloorToInt( yTop / (cell.y + sp.y) );
+        c = Mathf.FloorToInt(x0 / (cell.x + sp.x));
+        r = Mathf.FloorToInt(yTop / (cell.y + sp.y));
         if (c < 0 || c >= N || r < 0 || r >= N) return false;
 
-        // отсекаем «щели»
-        float cx    = c * (cell.x + sp.x);
+        float cx = c * (cell.x + sp.x);
         float cyTop = r * (cell.y + sp.y);
         if (x0 > cx + cell.x || yTop > cyTop + cell.y) return false;
 
@@ -201,7 +302,7 @@ public class LevelUIRenderer : MonoBehaviour
         return (idx >= 0 && idx < transform.childCount);
     }
 
-    // ---- Click API (совместимо и с drag) ----
+    // Click API
     public bool TryClickAtScreen(Vector2 screenPos, Camera cam)
         => TryClickAtScreen(screenPos, cam, ClickKind.Left);
 
@@ -211,7 +312,7 @@ public class LevelUIRenderer : MonoBehaviour
             return false;
 
         var cellComp = (_cells != null && idx < _cells.Length) ? _cells[idx]
-                         : transform.GetChild(idx).GetComponent<Cell>();
+                        : transform.GetChild(idx).GetComponent<Cell>();
         if (!cellComp || cellComp.state == CellState.Lock) return false;
 
         var ctrl = cellComp.GetComponentInParent<PuzzleController>();
@@ -219,11 +320,9 @@ public class LevelUIRenderer : MonoBehaviour
 
         if (kind == ClickKind.Left)  ctrl.TryLeft (r, c, cellComp);
         else                         ctrl.TryRight(r, c, cellComp);
-
         return true;
     }
 
-    // helpers
     static int SafeGet(int[] a, int i, int def = 0)
         => (a != null && i >= 0 && i < a.Length) ? a[i] : def;
 }
