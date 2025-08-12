@@ -4,22 +4,24 @@ using UnityEngine.InputSystem;
 public class VirtualCursor : MonoBehaviour
 {
     [Header("Refs")]
-    public RectTransform safeZone;    // область пазла
-    public RectTransform cursorRT;    // иконка курсора
-    public LevelUIRenderer grid;
+    public RectTransform safeZone;    // область пазла (RectTransform контейнера)
+    public RectTransform cursorRT;    // иконка курсора (UI)
+    public LevelUIRenderer grid;      // рендерер сетки
     public Camera uiCamera;
 
     [Header("Tuning")]
     public float sensitivity = 1f;
 
-    [Tooltip("Нормализованные координаты горячей точки в пределах Rect курсора. (0,0)=лево-низ, (1,1)=право-верх")]
-    public Vector2 hotspotNormalized = new Vector2(0f, 1f); // левый-верх по умолчанию
-    [Tooltip("Точная подстройка горячей точки, в пикселях экрана")]
+    [Tooltip("Нормализованные координаты hot-spot внутри Rect курсора: (0,0)=лево-низ, (1,1)=право-верх")]
+    public Vector2 hotspotNormalized = new Vector2(0f, 1f); // кончик слева-сверху
+    [Tooltip("Точная подстройка hot-spot в пикселях экрана")]
     public Vector2 pixelOffset = Vector2.zero;
-    [Tooltip("Клампить позицию так, чтобы hotspot всегда оставался внутри SafeZone")]
+    [Tooltip("Держать hot-spot внутри SafeZone")]
     public bool clampByHotspot = true;
 
-    Vector2 _screenPos; // экранные координаты центра курсора
+    Vector2 _screenPos;        // экранные координаты центра курсора
+    int _lastIdxLeft  = -1;    // последняя обработанная клетка (ЛКМ)
+    int _lastIdxRight = -1;    // последняя обработанная клетка (ПКМ)
 
     void OnEnable()
     {
@@ -30,8 +32,8 @@ public class VirtualCursor : MonoBehaviour
         // старт из центра SafeZone
         var corners = new Vector3[4];
         safeZone.GetWorldCorners(corners);
-        var min = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[0]);
-        var max = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[2]);
+        var min = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[0]); // bottom-left
+        var max = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[2]); // top-right
         _screenPos = (min + max) * 0.5f;
 
         UpdateCursorRT();
@@ -46,11 +48,12 @@ public class VirtualCursor : MonoBehaviour
     void Update()
     {
         var mouse = Mouse.current;
-        if (mouse == null) return;
+        if (mouse == null || grid == null || uiCamera == null || safeZone == null) return;
 
+        // движение
         _screenPos += mouse.delta.ReadValue() * sensitivity;
 
-        // Кламп по hotspot
+        // кламп по hot-spot
         var corners = new Vector3[4];
         safeZone.GetWorldCorners(corners);
         var min = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[0]);
@@ -58,13 +61,11 @@ public class VirtualCursor : MonoBehaviour
 
         if (clampByHotspot && cursorRT)
         {
-            UpdateCursorRT(); // чтобы GetHotspotScreen посчитал актуально
+            UpdateCursorRT(); // позиция курсора актуальна для подсчёта hot-spot
             var hs = GetHotspotScreen();
             var dx = 0f; var dy = 0f;
-            if (hs.x < min.x) dx = min.x - hs.x;
-            else if (hs.x > max.x) dx = max.x - hs.x;
-            if (hs.y < min.y) dy = min.y - hs.y;
-            else if (hs.y > max.y) dy = max.y - hs.y;
+            if (hs.x < min.x) dx = min.x - hs.x; else if (hs.x > max.x) dx = max.x - hs.x;
+            if (hs.y < min.y) dy = min.y - hs.y; else if (hs.y > max.y) dy = max.y - hs.y;
             _screenPos += new Vector2(dx, dy);
         }
         else
@@ -75,14 +76,40 @@ public class VirtualCursor : MonoBehaviour
 
         UpdateCursorRT();
 
-        // Клики из точки hotspot
-        var clickPos = GetHotspotScreen();
+        // текущая точка «клика» — hot-spot
+        var pos = GetHotspotScreen();
 
-        if (mouse.leftButton.wasPressedThisFrame)
-            grid.TryClickAtScreen(clickPos, uiCamera, ClickKind.Left);
+        // вычислим индекс клетки под hot-spot
+        if (grid.TryGetCellIndexAtScreen(pos, uiCamera, out int idx, out int r, out int c))
+        {
+            // ЛКМ: одиночный клик + рисование при удержании (по смене idx)
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                grid.TryClickAtScreen(pos, uiCamera, ClickKind.Left);
+                _lastIdxLeft = idx;
+            }
+            else if (mouse.leftButton.isPressed && idx != _lastIdxLeft)
+            {
+                grid.TryClickAtScreen(pos, uiCamera, ClickKind.Left);
+                _lastIdxLeft = idx;
+            }
 
-        if (mouse.rightButton.wasPressedThisFrame)
-            grid.TryClickAtScreen(clickPos, uiCamera, ClickKind.Right);
+            // ПКМ: одиночный клик + рисование при удержании (по смене idx)
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                grid.TryClickAtScreen(pos, uiCamera, ClickKind.Right);
+                _lastIdxRight = idx;
+            }
+            else if (mouse.rightButton.isPressed && idx != _lastIdxRight)
+            {
+                grid.TryClickAtScreen(pos, uiCamera, ClickKind.Right);
+                _lastIdxRight = idx;
+            }
+        }
+
+        // сбросы
+        if (mouse.leftButton.wasReleasedThisFrame)  _lastIdxLeft = -1;
+        if (mouse.rightButton.wasReleasedThisFrame) _lastIdxRight = -1;
     }
 
     void UpdateCursorRT()

@@ -271,6 +271,7 @@ GameObject:
   - component: {fileID: 337805820}
   - component: {fileID: 337805822}
   - component: {fileID: 337805821}
+  - component: {fileID: 337805823}
   m_Layer: 3
   m_Name: LevelRoot
   m_TagString: Untagged
@@ -315,11 +316,11 @@ MonoBehaviour:
   matchContainer: 1
   gridImage: {fileID: 337805821}
   gridColor: {r: 1, g: 1, b: 1, a: 0.55}
-  paddingPx: 8
   spacingPx: 100
+  outerBorderPx: 100
   colEmpty: {r: 0, g: 0, b: 0, a: 1}
-  colFill: {r: 0, g: 1, b: 0.2, a: 1}
-  colLock: {r: 0.8, g: 0.1, b: 0.2, a: 1}
+  colFill: {r: 0, g: 1, b: 0.4, a: 1}
+  colLock: {r: 1, g: 0.23137255, b: 0.23137255, a: 1}
   colClueText: {r: 0, g: 0, b: 0, a: 1}
 --- !u!114 &337805818
 MonoBehaviour:
@@ -426,6 +427,21 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 337805815}
   m_CullTransparentMesh: 1
+--- !u!114 &337805823
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 337805815}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_EffectColor: {r: 1, g: 1, b: 1, a: 0.5}
+  m_EffectDistance: {x: 1, y: -1}
+  m_UseGraphicAlpha: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0

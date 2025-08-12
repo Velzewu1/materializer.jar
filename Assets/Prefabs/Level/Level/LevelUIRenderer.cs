@@ -14,12 +14,12 @@ public class LevelUIRenderer : MonoBehaviour
     public bool matchContainer = true;
 
     [Header("Grid look")]
-    public Image gridImage;                   // ← назначается в инспекторе (Image на LevelRoot)
-    public Color gridColor = new Color(1f,1f,1f,0.55f); // цвет «линий» сетки (белый с альфой)
+    public Image gridImage;                   // Image на LevelRoot, через который видны линии и рамка
+    public Color gridColor = new Color(1f,1f,1f,0.55f); // белая полупрозрачная сетка/рамка
 
     [Header("Layout (px)")]
-    [Min(0)] public float paddingPx = 8f;
-    [Min(0)] public float spacingPx = 2f;    // толщина линий сетки в ПИКСЕЛЯХ
+    [Min(0)] public float spacingPx = 2f;    // толщина внутренних линий (в ПИКСЕЛЯХ)
+    [Min(0)] public float outerBorderPx = 2f;// толщина внешней рамки (в ПИКСЕЛЯХ)
 
     [Header("Cell colors")]
     public Color colEmpty    = new Color(0.06f,0.06f,0.06f);
@@ -44,9 +44,9 @@ public class LevelUIRenderer : MonoBehaviour
         _scaler = _canvas ? _canvas.GetComponent<CanvasScaler>() : null;
 
         if (!container) container = _rt;
-        if (!gridImage) gridImage = GetComponent<Image>(); // НЕ добавляем, только пытаемся найти
+        if (!gridImage) gridImage = GetComponent<Image>(); // пытаемся взять из инспектора/компонента
 
-        // базовые настройки
+        // базовые настройки грида
         _rt.anchorMin = _rt.anchorMax = new Vector2(0.5f, 0.5f);
         _rt.pivot     = new Vector2(0.5f, 0.5f);
 
@@ -135,22 +135,25 @@ public class LevelUIRenderer : MonoBehaviour
     {
         if (!level) return;
 
-        // применяем цвет сетки, если фон назначен
+        // цвет линий/рамки
         if (gridImage) { gridImage.color = gridColor; gridImage.raycastTarget = false; }
 
         var host = container ? container : _rt;
         float W = Mathf.Max(0.0001f, host.rect.width);
         float H = Mathf.Max(0.0001f, host.rect.height);
 
-        float pad     = Px2World(paddingPx);
-        float gapWU   = Mathf.Max(Px2World(Mathf.Max(1f, spacingPx)), 0.0001f); // ≥1 px экрана
-        float availW  = Mathf.Max(0, W - 2f * pad);
-        float availH  = Mathf.Max(0, H - 2f * pad);
+        // px → world (минимум 1 экранный пиксель)
+        float gapWU    = Mathf.Max(Px2World(Mathf.Max(1f, spacingPx)), 0.0001f);
+        float borderWU = Mathf.Max(Px2World(Mathf.Max(1f, outerBorderPx)), 0.0001f);
 
-        int   N       = Mathf.Max(1, level.size);
-        float sideX   = (availW - gapWU * (N - 1)) / N;
-        float sideY   = (availH - gapWU * (N - 1)) / N;
-        float side    = Mathf.Max(0.0001f, Mathf.Min(sideX, sideY));
+        // доступная область под клетки — минус внешняя рамка по периметру
+        float availW = Mathf.Max(0, W - 2f * borderWU);
+        float availH = Mathf.Max(0, H - 2f * borderWU);
+
+        int   N     = Mathf.Max(1, level.size);
+        float sideX = (availW - gapWU * (N - 1)) / N;
+        float sideY = (availH - gapWU * (N - 1)) / N;
+        float side  = Mathf.Max(0.0001f, Mathf.Min(sideX, sideY));
 
         _grid.cellSize = new Vector2(side, side);
         _grid.spacing  = new Vector2(gapWU, gapWU);
@@ -168,35 +171,44 @@ public class LevelUIRenderer : MonoBehaviour
         LayoutRebuilder.ForceRebuildLayoutImmediate(_rt);
     }
 
-    // Click API для виртуального курсора
+    // ---- HIT-TEST индекса клетки по экранным координатам (для drag) ----
+    public bool TryGetCellIndexAtScreen(Vector2 screenPos, Camera cam, out int idx, out int r, out int c)
+    {
+        idx = -1; r = -1; c = -1;
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_rt, screenPos, cam, out var local))
+            return false;
+
+        var rect = _rt.rect;
+        float x0   = local.x - rect.xMin;          // 0..w (слева направо)
+        float y0   = local.y - rect.yMin;          // 0..h (снизу вверх)
+        float yTop = rect.height - y0;             // 0..h (сверху вниз) — startCorner=UpperLeft
+
+        int   N    = Mathf.Max(1, level.size);
+        var   cell = _grid.cellSize;
+        var   sp   = _grid.spacing;
+
+        c = Mathf.FloorToInt( x0   / (cell.x + sp.x) );
+        r = Mathf.FloorToInt( yTop / (cell.y + sp.y) );
+        if (c < 0 || c >= N || r < 0 || r >= N) return false;
+
+        // отсекаем «щели»
+        float cx    = c * (cell.x + sp.x);
+        float cyTop = r * (cell.y + sp.y);
+        if (x0 > cx + cell.x || yTop > cyTop + cell.y) return false;
+
+        idx = r * N + c;
+        return (idx >= 0 && idx < transform.childCount);
+    }
+
+    // ---- Click API (совместимо и с drag) ----
     public bool TryClickAtScreen(Vector2 screenPos, Camera cam)
         => TryClickAtScreen(screenPos, cam, ClickKind.Left);
 
     public bool TryClickAtScreen(Vector2 screenPos, Camera cam, ClickKind kind)
     {
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_rt, screenPos, cam, out var local))
+        if (!TryGetCellIndexAtScreen(screenPos, cam, out int idx, out int r, out int c))
             return false;
-
-        var rect = _rt.rect;
-        float x0 = local.x - rect.xMin;
-        float y0 = local.y - rect.yMin;
-        float yTop = rect.height - y0; // startCorner = UpperLeft
-
-        int N = level.size;
-        var cell = _grid.cellSize;
-        var sp   = _grid.spacing;
-
-        int c = Mathf.FloorToInt( x0   / (cell.x + sp.x) );
-        int r = Mathf.FloorToInt( yTop / (cell.y + sp.y) );
-        if (c < 0 || c >= N || r < 0 || r >= N) return false;
-
-        // отсечь «щели»
-        float cx = c * (cell.x + sp.x);
-        float cyTop = r * (cell.y + sp.y);
-        if (x0 > cx + cell.x || yTop > cyTop + cell.y) return false;
-
-        int idx = r * N + c;
-        if (idx < 0 || idx >= transform.childCount) return false;
 
         var cellComp = (_cells != null && idx < _cells.Length) ? _cells[idx]
                          : transform.GetChild(idx).GetComponent<Cell>();
