@@ -99,7 +99,7 @@ Material:
     - _AddPrecomputedVelocity: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
-    - _Barrel: 0.014
+    - _Barrel: 0.086
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
@@ -120,7 +120,7 @@ Material:
     - _Intensity: 1
     - _Metallic: 0
     - _Mix: 1
-    - _NoiseAmount: 0.02
+    - _NoiseAmount: 0.009
     - _OcclusionStrength: 1
     - _Parallax: 0.005
     - _QueueOffset: 0

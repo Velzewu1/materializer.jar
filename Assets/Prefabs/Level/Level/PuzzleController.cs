@@ -31,16 +31,7 @@ public class PuzzleController : MonoBehaviour
     public bool IsLocked { get; private set; }
     public float Sync01  => Mathf.Clamp01(1f - (float)Strikes / Mathf.Max(1, maxStrikes));
 
-    // ── Сохранения ───────────────────────────────────────────────────────────────
-    [Header("Progress / Saves")]
-    [Tooltip("Опционально: ссылка на LevelSwitcher, чтобы мы знали текущий индекс уровня.")]
-    public LevelSwitcher levelSwitcher;
-    [Tooltip("Сохранять следующий индекс уровня при победе.")]
-    public bool saveOnWin = true;
-    [Tooltip("Копить общий счётчик ошибок в сохранении.")]
-    public bool saveStrikes = true;
-
-    // Events (оставлены твоими, чтобы UI мог подписываться)
+    // Events
     public event Action<int,int,float> OnStrike;        // (strikes,max,sync01)
     public event Action<int,int>       OnStrikesChanged;
     public event Action<float>         OnSyncChanged;
@@ -54,7 +45,6 @@ public class PuzzleController : MonoBehaviour
 
     void Start()
     {
-        // Инициализация (без автозагрузки шага — это делает внешний менеджер/LevelSwitcher)
         if (ui && level && ui.level != level) ui.SetLevel(level);
         Rebind();
         ValidateAll();
@@ -104,17 +94,19 @@ public class PuzzleController : MonoBehaviour
         bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
         var  prev       = cell.state;
 
-        // защита от перезаписи верных состояний
-        if (shouldFill && prev == CellState.Fill)  return;
-        if (!shouldFill && prev == CellState.Empty) return;
+        // ЗАЩИТА верных клеток: если клетка уже в корректном окончательном состоянии — игнор ввода
+        if (shouldFill && prev == CellState.Fill)  return; // не даём «снять» верное заполнение
+        if (!shouldFill && prev == CellState.Empty) return; // не даём «перекрасить» верную пустую
 
         if (shouldFill)
         {
+            // Разрешаем исправить ошибку → Fill
             cell.SetState(CellState.Fill);
         }
         else
         {
-            if (prev == CellState.Error) return; // не дублируем штраф
+            // Уже была ошибкой — не наказываем повторно
+            if (prev == CellState.Error) return;
             cell.SetState(CellState.Error);
             Punish($"LEFT on empty ({r},{c})");
         }
@@ -132,17 +124,20 @@ public class PuzzleController : MonoBehaviour
         bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
         var  prev       = cell.state;
 
-        if (shouldFill && prev == CellState.Fill)   return;
-        if (!shouldFill && prev == CellState.Empty) return;
+        // ЗАЩИТА верных клеток: если клетка уже в корректном окончательном состоянии — игнор ввода
+        if (shouldFill && prev == CellState.Fill)   return; // не даём «снять» верное заполнение ПКМ
+        if (!shouldFill && prev == CellState.Empty) return; // повторное empty — игнор
 
         if (shouldFill)
         {
+            // Уже была ошибкой — не наказываем повторно
             if (prev == CellState.Error) return;
             cell.SetState(CellState.Error);
             Punish($"RIGHT on filled ({r},{c})");
         }
         else
         {
+            // Разрешаем исправить ошибку → Empty
             cell.SetState(CellState.Empty);
         }
 
@@ -158,14 +153,6 @@ public class PuzzleController : MonoBehaviour
 
         Strikes++;
         Debug.Log($"[Penalty] {reason}. Strikes: {Strikes}/{maxStrikes}");
-
-        // Сохраняем общий счётчик ошибок (не обязателен для прогресса по уровням)
-        if (saveStrikes)
-        {
-            SaveManager.Load(); // гарантируем, что есть актуальная структура
-            SaveManager.Data.totalStrikes++;
-            SaveManager.Save();
-        }
 
         OnStrike?.Invoke(Strikes, maxStrikes, Sync01);
         RaiseStrikesAndSync();
@@ -185,44 +172,13 @@ public class PuzzleController : MonoBehaviour
         if (lockInputOnLose) IsLocked = true;
         Debug.Log("[LOSE] Materialization failed.");
         OnLoseEvent?.Invoke();
-        // НИЧЕГО не сохраняем про шаг — остаёмся на том же индексе.
     }
 
     void OnWin()
     {
         IsLocked = true;
         Debug.Log("WIN!");
-
-        // ── Сохранить ТОЛЬКО номер уровня (следующий индекс) ───────────────
-        if (saveOnWin)
-        {
-            SaveManager.Load();
-            int nextIndex = ComputeNextIndex();
-            if (nextIndex >= 0)
-            {
-                SaveManager.Data.stepIndex = nextIndex;
-                SaveManager.Save();
-            }
-        }
-        // сигналы наружу (камера/анимация/переключение сцены)
         OnWinEvent?.Invoke();
-    }
-
-    // Считаем индекс текущего уровня и «next» по LevelSwitcher (если задан)
-    int ComputeNextIndex()
-    {
-        if (levelSwitcher == null || levelSwitcher.levels == null || levelSwitcher.levels.Length == 0)
-            return -1;
-
-        int cur = -1;
-        for (int i = 0; i < levelSwitcher.levels.Length; i++)
-        {
-            if (levelSwitcher.levels[i] == level) { cur = i; break; }
-        }
-        if (cur < 0) cur = Mathf.Clamp(levelSwitcher.index, 0, levelSwitcher.levels.Length - 1);
-
-        int next = Mathf.Min(cur + 1, levelSwitcher.levels.Length - 1);
-        return next;
     }
 
     public void OnCellChanged(int r, int c) { /* reserved for undo/redo */ }
@@ -288,6 +244,7 @@ public class PuzzleController : MonoBehaviour
             int idx = r*N+c;
             if (cells[r,c].state == CellState.Lock) continue;
 
+            // ни Unknown, ни Error
             var st = cells[r,c].state;
             if (st == CellState.Unknown || st == CellState.Error) return false;
 
