@@ -38,10 +38,21 @@ public class PuzzleController : MonoBehaviour
     public event Action                OnLoseEvent;
     public event Action                OnWinEvent;
 
+    [Header("SFX")]
+    public AudioSource sfxSource;            // опционально; если не задан, PlayClipAtPoint(Camera.main)
+    public AudioClip   sfxClickFill;         // клик при закрашивании (ЛКМ верно)
+    public AudioClip   sfxClickEmpty;        // клик при пометке пусто (ПКМ верно)
+    public AudioClip   sfxClickGeneric;      // запасной клик (если не заданы специфичные)
+    public AudioClip   sfxMistake;           // звук ошибки/штрафа
+    [Range(0f,1f)] public float sfxVolume = 1f;
+    [Tooltip("Минимальная пауза между «клик»-звуками (для драга).")]
+    public float sfxClickMinInterval = 0.03f;
+
     int N;
     Cell[,] cells;
     TextMeshProUGUI[,] clueTexts;
     float _lastStrikeTime = -999f;
+    float _lastClickSfxTime = -999f;
 
     void Start()
     {
@@ -94,21 +105,22 @@ public class PuzzleController : MonoBehaviour
         bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
         var  prev       = cell.state;
 
-        // ЗАЩИТА верных клеток: если клетка уже в корректном окончательном состоянии — игнор ввода
-        if (shouldFill && prev == CellState.Fill)  return; // не даём «снять» верное заполнение
-        if (!shouldFill && prev == CellState.Empty) return; // не даём «перекрасить» верную пустую
+        // защита корректных финальных состояний
+        if (shouldFill && prev == CellState.Fill)  return;
+        if (!shouldFill && prev == CellState.Empty) return;
 
         if (shouldFill)
         {
-            // Разрешаем исправить ошибку → Fill
+            // исправляем в Fill и проигрываем клик
             cell.SetState(CellState.Fill);
+            PlayClickSfx(sfxClickFill);
         }
         else
         {
-            // Уже была ошибкой — не наказываем повторно
+            // если уже ошибка — повторно не наказываем/не звуким
             if (prev == CellState.Error) return;
             cell.SetState(CellState.Error);
-            Punish($"LEFT on empty ({r},{c})");
+            Punish($"LEFT on empty ({r},{c})"); // внутри будет звук ошибки
         }
 
         ValidateNeighborsAround(r, c);
@@ -124,21 +136,19 @@ public class PuzzleController : MonoBehaviour
         bool shouldFill = (level.target != null && idx < level.target.Length && level.target[idx] == 1);
         var  prev       = cell.state;
 
-        // ЗАЩИТА верных клеток: если клетка уже в корректном окончательном состоянии — игнор ввода
-        if (shouldFill && prev == CellState.Fill)   return; // не даём «снять» верное заполнение ПКМ
-        if (!shouldFill && prev == CellState.Empty) return; // повторное empty — игнор
+        if (shouldFill && prev == CellState.Fill)   return;
+        if (!shouldFill && prev == CellState.Empty) return;
 
         if (shouldFill)
         {
-            // Уже была ошибкой — не наказываем повторно
             if (prev == CellState.Error) return;
             cell.SetState(CellState.Error);
-            Punish($"RIGHT on filled ({r},{c})");
+            Punish($"RIGHT on filled ({r},{c})"); // звук ошибки в Punish
         }
         else
         {
-            // Разрешаем исправить ошибку → Empty
             cell.SetState(CellState.Empty);
+            PlayClickSfx(sfxClickEmpty);
         }
 
         ValidateNeighborsAround(r, c);
@@ -153,6 +163,9 @@ public class PuzzleController : MonoBehaviour
 
         Strikes++;
         Debug.Log($"[Penalty] {reason}. Strikes: {Strikes}/{maxStrikes}");
+
+        // звук ошибки
+        PlayMistakeSfx();
 
         OnStrike?.Invoke(Strikes, maxStrikes, Sync01);
         RaiseStrikesAndSync();
@@ -209,14 +222,14 @@ public class PuzzleController : MonoBehaviour
 
         int filled=0, unknown=0;
         for (int dr=-1; dr<=1; dr++)
-            for (int dc=-1; dc<=1; dc++)
-            {
-                int rr=r+dr, cc=c+dc;
-                if (rr<0||cc<0||rr>=N||cc>=N) continue;
-                var s = cells[rr,cc].state;
-                if (s==CellState.Fill) filled++;
-                else if (s==CellState.Unknown) unknown++;
-            }
+        for (int dc=-1; dc<=1; dc++)
+        {
+            int rr=r+dr, cc=c+dc;
+            if (rr<0||cc<0||rr>=N||cc>=N) continue;
+            var s = cells[rr,cc].state;
+            if (s==CellState.Fill) filled++;
+            else if (s==CellState.Unknown) unknown++;
+        }
 
         bool solved = (filled == clue && unknown == 0);
         bool over   = (filled > clue);
@@ -244,7 +257,6 @@ public class PuzzleController : MonoBehaviour
             int idx = r*N+c;
             if (cells[r,c].state == CellState.Lock) continue;
 
-            // ни Unknown, ни Error
             var st = cells[r,c].state;
             if (st == CellState.Unknown || st == CellState.Error) return false;
 
@@ -252,5 +264,26 @@ public class PuzzleController : MonoBehaviour
             if (shouldBeFill != (st == CellState.Fill)) return false;
         }
         return true;
+    }
+
+    // ---------- SFX helpers ----------
+    void PlayClickSfx(AudioClip specific)
+    {
+        // троттлинг для драга
+        if (Time.unscaledTime - _lastClickSfxTime < sfxClickMinInterval) return;
+        _lastClickSfxTime = Time.unscaledTime;
+
+        var clip = specific ? specific : sfxClickGeneric;
+        if (!clip) return;
+
+        if (sfxSource) sfxSource.PlayOneShot(clip, sfxVolume);
+        else           AudioSource.PlayClipAtPoint(clip, Camera.main ? Camera.main.transform.position : Vector3.zero, sfxVolume);
+    }
+
+    void PlayMistakeSfx()
+    {
+        if (!sfxMistake) return;
+        if (sfxSource) sfxSource.PlayOneShot(sfxMistake, sfxVolume);
+        else           AudioSource.PlayClipAtPoint(sfxMistake, Camera.main ? Camera.main.transform.position : Vector3.zero, sfxVolume);
     }
 }
