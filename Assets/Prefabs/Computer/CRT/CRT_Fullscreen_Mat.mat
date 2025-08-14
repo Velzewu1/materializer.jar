@@ -99,7 +99,7 @@ Material:
     - _AddPrecomputedVelocity: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
-    - _Barrel: 0.086
+    - _Barrel: 0.04
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
@@ -120,7 +120,7 @@ Material:
     - _Intensity: 1
     - _Metallic: 0
     - _Mix: 1
-    - _NoiseAmount: 0.009
+    - _NoiseAmount: 0.49973682
     - _OcclusionStrength: 1
     - _Parallax: 0.005
     - _QueueOffset: 0
@@ -134,7 +134,7 @@ Material:
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
-    - _Vignette: 0.92
+    - _Vignette: 2
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1

@@ -5,29 +5,28 @@ using UnityEngine.Events;
 public class LevelSwitcher : MonoBehaviour
 {
     [Header("Refs")]
-    public PuzzleController controller;     // ссылка на контроллер
-    public LevelData[] levels;              // плейлист уровней
+    public PuzzleController controller;
+    public LevelData[] levels;
 
-    [Header("Win sequence between levels")]
-    public bool autoAdvanceOnWin = true;
+    [Header("Transition mode")]
+    public bool  reloadSceneOnTransition = true; // TRUE: все переходы через SceneReload
+    public bool  autoAdvanceOnWin = true;
     [Min(0f)] public float materializeDuration = 1.0f;
     [Min(0f)] public float cameraFocusDuration  = 1.5f;
-    public bool loop = true;
+    public bool  loop = true;
 
     [Header("Lose behaviour")]
-    public bool restartOnLose = true;
-    [Min(0f)] public float loseRestartDelay = 0.0f; // можно поставить 0.2–0.5с для вспышки/звукa
+    public bool  restartOnLose   = true;
+    [Min(0f)] public float loseRestartDelay = 0.0f;
 
     [Header("Hooks")]
-    public UnityEvent OnMaterializeBegin;
-    public UnityEvent OnMaterializeEnd;
-    public UnityEvent OnCameraFocusBegin;
-    public UnityEvent OnCameraFocusEnd;
+    public UnityEvent OnMaterializeBegin, OnMaterializeEnd;
+    public UnityEvent OnCameraFocusBegin,  OnCameraFocusEnd;
     public UnityEvent OnLevelAboutToChange;
 
     int index = -1;
-    Coroutine winRoutine;
-    Coroutine loseRoutine;
+    Coroutine winRoutine, loseRoutine;
+    bool transitioning;
 
     void Awake()
     {
@@ -42,7 +41,6 @@ public class LevelSwitcher : MonoBehaviour
             controller.OnLoseEvent += HandleLose;
         }
     }
-
     void OnDisable()
     {
         if (controller)
@@ -50,20 +48,32 @@ public class LevelSwitcher : MonoBehaviour
             controller.OnWinEvent  -= HandleWin;
             controller.OnLoseEvent -= HandleLose;
         }
-        if (winRoutine  != null) { StopCoroutine(winRoutine);  winRoutine  = null; }
-        if (loseRoutine != null) { StopCoroutine(loseRoutine); loseRoutine = null; }
+        if (winRoutine  != null) StopCoroutine(winRoutine);
+        if (loseRoutine != null) StopCoroutine(loseRoutine);
+        transitioning = false;
+    }
+
+    public int LevelCount   => levels?.Length ?? 0;
+    public int CurrentIndex => index;
+
+    public void LoadIndex(int i)
+    {
+        if (!IsReady() || i < 0 || i >= levels.Length) return;
+        SetIndex(i);
+    }
+
+    public void RestartCurrent()
+    {
+        if (!IsReady()) return;
+        if (index < 0) index = 0;
+        SetIndex(index);
     }
 
     [ContextMenu("Next Level")]
     public void Next()
     {
         if (!IsReady()) return;
-        int next = index + 1;
-        if (next >= levels.Length)
-        {
-            if (!loop) return;
-            next = 0;
-        }
+        int next = NextIndex(index);
         SetIndex(next);
     }
 
@@ -76,77 +86,65 @@ public class LevelSwitcher : MonoBehaviour
         SetIndex(prev);
     }
 
-    public void LoadIndex(int i)
-    {
-        if (!IsReady() || i < 0 || i >= levels.Length) return;
-        SetIndex(i);
-    }
-
-    public void RestartCurrent()
-    {
-        if (!IsReady())
-            return;
-
-        if (index < 0) index = 0; // на всякий случай
-        SetIndex(index);
-    }
-
     void SetIndex(int i)
     {
         index = i;
-        var data = levels[index];
-        controller.SetLevel(data); // сброс состояний и страйков внутри PuzzleController
-
-        // отменяем висящие корутины
+        controller.SetLevel(levels[index]);   // Полный сброс/перебилд в PuzzleController
         if (winRoutine  != null) { StopCoroutine(winRoutine);  winRoutine  = null; }
         if (loseRoutine != null) { StopCoroutine(loseRoutine); loseRoutine = null; }
+        transitioning = false;
     }
 
+    int  NextIndex(int from) => (from + 1 < LevelCount) ? from + 1 : (loop ? 0 : LevelCount - 1);
     bool IsReady() => (levels != null && levels.Length > 0 && controller != null);
 
-    // === Победа → последовательность → Next ===
+    // === WIN ===
     void HandleWin()
     {
-        if (!autoAdvanceOnWin) return;
+        if (!autoAdvanceOnWin || transitioning) return;
         if (winRoutine != null) StopCoroutine(winRoutine);
         winRoutine = StartCoroutine(WinSequence());
     }
 
     IEnumerator WinSequence()
     {
-        if (materializeDuration > 0f)
-        {
-            OnMaterializeBegin?.Invoke();
-            yield return new WaitForSeconds(materializeDuration);
-            OnMaterializeEnd?.Invoke();
-        }
+        transitioning = true;
 
-        if (cameraFocusDuration > 0f)
-        {
-            OnCameraFocusBegin?.Invoke();
-            yield return new WaitForSeconds(cameraFocusDuration);
-            OnCameraFocusEnd?.Invoke();
-        }
+        if (materializeDuration > 0f) { OnMaterializeBegin?.Invoke(); yield return new WaitForSeconds(materializeDuration); OnMaterializeEnd?.Invoke(); }
+        if (cameraFocusDuration  > 0f) { OnCameraFocusBegin ?.Invoke(); yield return new WaitForSeconds(cameraFocusDuration ); OnCameraFocusEnd ?.Invoke(); }
 
         OnLevelAboutToChange?.Invoke();
-        Next();
+
+        if (reloadSceneOnTransition)
+            SceneReload.ReloadNextFrom(index, LevelCount, loop);
+        else
+            SetIndex(NextIndex(index));
+
         winRoutine = null;
+        transitioning = false;
     }
 
-    // === Поражение → рестарт текущего уровня ===
+    // === LOSE ===
     void HandleLose()
     {
-        if (!restartOnLose) return;
+        if (!restartOnLose || transitioning) return;
         if (loseRoutine != null) StopCoroutine(loseRoutine);
         loseRoutine = StartCoroutine(RestartAfterLose());
     }
 
     IEnumerator RestartAfterLose()
     {
+        transitioning = true;
+
         if (loseRestartDelay > 0f)
             yield return new WaitForSeconds(loseRestartDelay);
 
-        RestartCurrent();
+        if (reloadSceneOnTransition)
+            SceneReload.ReloadWithIndex(Mathf.Clamp(index, 0, LevelCount - 1)); // рестарт текущего
+        else
+            RestartCurrent();
+
         loseRoutine = null;
+        transitioning = false;
     }
 }
