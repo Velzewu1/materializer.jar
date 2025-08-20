@@ -29,6 +29,7 @@ public class ScreenSoundController : MonoBehaviour
     LevelData   _lastLevel;
     AudioClip   _currentClip;
     float       _currentVol = 0.9f;
+    bool        _sceneChangingOrQuitting = false;
 
     void Awake()
     {
@@ -44,7 +45,7 @@ public class ScreenSoundController : MonoBehaviour
             _sfx.playOnAwake       = false;
             _sfx.loop              = false;
             _sfx.spatialBlend      = 0f;         // 2D
-            _sfx.ignoreListenerPause = true;     // на всякий случай
+            _sfx.ignoreListenerPause = true;
             if (dontDestroySfxPlayer) DontDestroyOnLoad(go);
         }
         else
@@ -63,6 +64,8 @@ public class ScreenSoundController : MonoBehaviour
 
     void OnEnable()
     {
+        _sceneChangingOrQuitting = false;
+
         if (!controller) controller = FindAnyObjectByType<PuzzleController>();
         if (controller)
         {
@@ -81,8 +84,15 @@ public class ScreenSoundController : MonoBehaviour
             controller.OnWinEvent  -= HandleWin;
             controller.OnLoseEvent -= HandleLose;
         }
-        StopLoop(true);
+
+        // гасим корутины, НО не трогаем Stop() на уничтоженном источнике
         StopFade();
+        StopLoop(false); // <- ВАЖНО: не вызываем musicSource.Stop() при disable
+    }
+
+    void OnApplicationQuit()
+    {
+        _sceneChangingOrQuitting = true;
     }
 
     void Update()
@@ -101,14 +111,15 @@ public class ScreenSoundController : MonoBehaviour
         if (!restartMusic) return;
 
         StopFade();
-        StopLoop(true);
-        if (_currentClip)
+        StopLoop(true); // безопасно: внутри проверим валидность
+        if (_currentClip && IsAlive(musicSource))
             _loopCo = StartCoroutine(MusicLoop());
     }
 
     IEnumerator MusicLoop()
     {
-        while (_currentClip)
+        // петля до смены клипа или уничтожения источника
+        while (_currentClip && IsAlive(musicSource))
         {
             musicSource.clip   = _currentClip;
             musicSource.volume = 0f;
@@ -116,20 +127,41 @@ public class ScreenSoundController : MonoBehaviour
 
             // fade-in
             float t = 0f;
-            while (t < musicFadeIn && musicSource.isPlaying)
+            if (musicFadeIn <= 0f)
             {
-                musicSource.volume = Mathf.Lerp(0f, _currentVol, musicFadeIn <= 0f ? 1f : t / musicFadeIn);
-                t += Time.deltaTime;
-                yield return null;
+                if (!IsAlive(musicSource)) yield break;
+                musicSource.volume = _currentVol;
             }
-            musicSource.volume = _currentVol;
+            else
+            {
+                while (t < musicFadeIn && IsAlive(musicSource) && musicSource.isPlaying)
+                {
+                    musicSource.volume = Mathf.Lerp(0f, _currentVol, t / musicFadeIn);
+                    t += Time.deltaTime;
+                    yield return null;
+                }
+                if (!IsAlive(musicSource)) yield break;
+                musicSource.volume = _currentVol;
+            }
 
             // ждём, пока трек закончится
-            yield return new WaitWhile(() => musicSource.isPlaying);
+            if (!IsAlive(musicSource)) yield break;
+            yield return new WaitWhile(() => IsAlive(musicSource) && musicSource.isPlaying);
+
+            if (!IsAlive(musicSource)) break;
 
             // случайная пауза
             float gap = Random.Range(gapSeconds.x, gapSeconds.y);
-            if (gap > 0f) yield return new WaitForSeconds(gap);
+            if (gap > 0f)
+            {
+                float g = 0f;
+                while (g < gap)
+                {
+                    if (!IsAlive(musicSource)) yield break;
+                    g += Time.deltaTime;
+                    yield return null;
+                }
+            }
         }
         _loopCo = null;
     }
@@ -148,45 +180,66 @@ public class ScreenSoundController : MonoBehaviour
 
     void FadeOutMusicAndPlay(float fadeTime, AudioClip sfx)
     {
-        StopLoop(false);    // не стопаем сразу аудио, только петлю
+        StopLoop(false);    // не рвём проигрывание Stop(), только петлю
         StopFade();
-        _fadeCo = StartCoroutine(FadeOutAndOneShot(fadeTime, sfx));
+        if (IsAlive(musicSource))
+            _fadeCo = StartCoroutine(FadeOutAndOneShot(fadeTime, sfx));
     }
 
     IEnumerator FadeOutAndOneShot(float fadeTime, AudioClip sfx)
     {
+        if (!IsAlive(musicSource))
+        {
+            PlayOneShotSafe(sfx);
+            _fadeCo = null;
+            yield break;
+        }
+
         float startVol = musicSource.volume;
         float t = 0f;
 
         if (musicSource.isPlaying && fadeTime > 0f)
         {
-            while (t < fadeTime)
+            while (t < fadeTime && IsAlive(musicSource))
             {
                 musicSource.volume = Mathf.Lerp(startVol, 0f, t / fadeTime);
                 t += Time.deltaTime;
                 yield return null;
             }
         }
-        musicSource.volume = 0f;
-        musicSource.Stop();
 
-        if (sfx && _sfx)
+        if (IsAlive(musicSource))
         {
-            _sfx.volume = sfxVolume;
-            _sfx.PlayOneShot(sfx);
-            Debug.Log("[ScreenSound] SFX started: " + sfx.name);
+            musicSource.volume = 0f;
+            // Во время смены сцены Stop() может кидать MissingReference — проверяем ещё раз
+            if (!_sceneChangingOrQuitting) musicSource.Stop();
         }
 
+        PlayOneShotSafe(sfx);
         _fadeCo = null;
+    }
+
+    void PlayOneShotSafe(AudioClip sfx)
+    {
+        if (sfx && _sfx) _sfx.PlayOneShot(sfx, sfxVolume);
     }
 
     void StopLoop(bool stopAudio)
     {
         if (_loopCo != null) { StopCoroutine(_loopCo); _loopCo = null; }
-        if (stopAudio) musicSource.Stop();
+        if (stopAudio && IsAlive(musicSource) && !_sceneChangingOrQuitting)
+        {
+            // Доп. защита: только если активен в иерархии
+            if (musicSource.gameObject.activeInHierarchy)
+                musicSource.Stop();
+        }
     }
+
     void StopFade()
     {
         if (_fadeCo != null) { StopCoroutine(_fadeCo); _fadeCo = null; }
     }
+
+    // Безопасная проверка «жив ли» AudioSource (не уничтожен и не фейк-null)
+    static bool IsAlive(Object obj) => obj != null; // Unity перегружает == для уничтоженных объектов
 }

@@ -8,16 +8,29 @@ public class LevelData : ScriptableObject
     public int[] locks;                // 0/1, длина N*N
     public int[] clues;                // -1..9, длина N*N (-1 => подсказка скрыта)
 
-    // --- UI/Meta (то, что уже есть у тебя) ---
+    // --- UI/Meta ---
     public Sprite itemSprite;
     public string itemLabel;
 
-    // --- AUDIO: трек конкретного уровня ---
+    // --- AUDIO ---
     [Header("Audio")]
     public AudioClip musicClip;
     [Range(0f,1f)] public float musicVolume = 0.8f;
 
-    // Индексация / валидация
+    // --- CAMERA (Cinemachine) ---
+    [Header("Camera (Cinemachine)")]
+    public bool  cameraOverride = true;        // если false — уровень не трогает камеру
+    [Tooltip("Для Framing Transposer: m_CameraDistance. Для Transposer: FollowOffset.z")]
+    public float cameraDistance = 8f;
+
+    [Tooltip("Если true — переключим камеру в Ortho и анимируем OrthoSize; иначе — FOV")]
+    public bool  useOrthographic = false;
+    [Min(0.01f)] public float orthoSize = 5f;  // целевой размер, если Orthographic
+
+    [Range(1f,120f)] public float fieldOfView = 50f; // целевой FOV, если Perspective
+    [Min(0f)] public float cameraBlendTime = 0.75f;  // длительность плавного перехода
+
+    // --- Индексация ---
     public int Get(int[] a, int r, int c) => a[r * size + c];
     public void Set(int[] a, int r, int c, int v) { a[r * size + c] = v; }
 
@@ -26,6 +39,9 @@ public class LevelData : ScriptableObject
         size = Mathf.Max(1, size);
         EnsureArrays();
         musicVolume = Mathf.Clamp01(musicVolume);
+        fieldOfView = Mathf.Clamp(fieldOfView, 1f, 120f);
+        orthoSize   = Mathf.Max(0.01f, orthoSize);
+        cameraBlendTime = Mathf.Max(0f, cameraBlendTime);
     }
 
     public void EnsureArrays()

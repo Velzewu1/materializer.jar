@@ -20,3 +20,14 @@ MonoBehaviour:
   itemLabel: Door
   musicClip: {fileID: 8300000, guid: 53f812009112316419073fc2f750bc08, type: 3}
   musicVolume: 0.8
+  cameraOverride: 1
+  cameraDistance: 1.5
+  useOrthographic: 0
+  orthoSize: 5
+  fieldOfView: 50
+  cameraBlendTime: 0.75
+  revealPrefab: {fileID: 0}
+  vcamPrefab: {fileID: 0}
+  revealLocalPosition: {x: 0, y: 0, z: 0}
+  revealLocalEuler: {x: 0, y: 0, z: 0}
+  revealLocalScale: {x: 1, y: 1, z: 1}

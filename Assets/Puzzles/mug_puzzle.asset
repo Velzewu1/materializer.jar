@@ -20,3 +20,13 @@ MonoBehaviour:
   itemLabel: Mug
   musicClip: {fileID: 8300000, guid: 8317d057545c8674da75c993aaea4813, type: 3}
   musicVolume: 0.8
+  cameraOverride: 1
+  cameraDistance: 1.7
+  useOrthographic: 0
+  orthoSize: 5
+  fieldOfView: 50
+  cameraBlendTime: 0.75
+  focusObjectName: Mug
+  focusVcamName: MugCamera
+  focusHideBefore: 1
+  focusRevealOnFocusBegin: 1

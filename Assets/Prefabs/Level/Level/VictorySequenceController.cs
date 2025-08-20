@@ -2,81 +2,93 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.Events;
+
+using Vcam = Unity.Cinemachine.CinemachineCamera; // CM 3.1.4
 
 public class VictorySequenceController : MonoBehaviour
 {
+    [Header("Events")]
+    public UnityEvent OnSequenceCompleted; 
     [Header("Refs")]
-    public PuzzleController controller;          // слушаем OnWinEvent
+    public PuzzleController controller;
 
     [Header("Roots")]
-    public GameObject  puzzleRoot;               // корень UI пазла (LevelRoot)
-    public CanvasGroup screenCanvas;             // основной Canvas (ScreenCanvas)
-    public CanvasGroup victoryCanvas;            // Canvas победной сценки (обычно скрыт)
+    public GameObject  puzzleRoot;
+    public CanvasGroup screenCanvas;
+    public CanvasGroup victoryCanvas;
     public bool deactivateVictoryCanvasGO = true;
 
-    [Header("Item (первая фаза)")]
-    public Image     itemImage;                       // картинка предмета из LevelData
-    [Min(0.1f)] public float itemHoldTime = 1.5f;    // сколько держать предмет до начала фейда
-    [Min(0.05f)] public float itemFadeTime = 0.6f;   // длительность фейд-аута предмета
+    [Header("Item (phase 1)")]
+    public Image itemImage;
+    [Min(0.1f)] public float itemHoldTime = 1.5f;
+    [Min(0.05f)] public float itemFadeTime = 0.6f;
 
-    [Header("Mascot (идёт ПАРАЛЛЕЛЬНО с Item)")]
-    public Image     mascotImage;                     // маскот (стат/спрайтшит)
-    public Sprite[]  mascotFrames;                    // кадры спрайтшита (если заданы)
-    public float     mascotFps = 12f;                 // FPS анимации маскота
-    [Min(0f)] public float mascotStartDelay = 0.0f;   // задержка перед проявлением маскота
-    [Min(0.05f)] public float mascotFadeIn = 0.5f;    // мягкое появление маскота
+    [Header("Mascot (parallel)")]
+    public Image    mascotImage;
+    public Sprite[] mascotFrames;
+    public float    mascotFps = 12f;
+    [Min(0f)]    public float mascotStartDelay = 0.0f;
+    [Min(0.05f)] public float mascotFadeIn = 0.5f;
 
     [Header("Texts")]
-    public TMP_Text  materializationText;             // “Materialisation…”
-    public TMP_Text  completedText;                   // “MATERIALISATION COMPLETED”
-    public bool      showCompletedAtEnd = true;
-    public string    completedPhrase = "MATERIALISATION COMPLETED";
-    [Min(0.1f)] public float completedHold = 1.2f;
-    [Min(0.05f)] public float completedFadeOut = 0.45f; // плавный fade-out после удержания
+    public TMP_Text materializationText;
+    public TMP_Text completedText;
+    public bool     showCompletedAtEnd = true;
+    public string   completedPhrase = "MATERIALISATION COMPLETED";
+    [Min(0.1f)]  public float completedHold = 1.2f;
+    [Min(0.05f)] public float completedFadeOut = 0.45f;
 
-    [Header("Timing (общая длительность)")]
-    [Min(0.5f)] public float sequenceDuration = 10f;  // вся сценка (таймер для шумов/шейка)
+    [Header("Timing")]
+    [Min(0.5f)] public float sequenceDuration = 10f;
 
-    [Header("CRT Noise (опция)")]
-    public Material  crtMaterial;                     // CRT_Fullscreen_Mat (ваш шейдер)
-    public string    noisePropName = "_NoiseAmount";
-    public float     noiseMax = 0.35f;
-    public float     noiseRampStart = 8.5f;           // с какой секунды наращивать шум
-    public AnimationCurve noiseCurve = AnimationCurve.Linear(0,0, 1,1);
+    [Header("CRT Noise (optional)")]
+    public Material crtMaterial;
+    public string   noisePropName = "_NoiseAmount";
+    public float    noiseMax = 0.35f;
+    public float    noiseRampStart = 8.5f;
+    public AnimationCurve noiseCurve = AnimationCurve.Linear(0,0,1,1);
 
-    [Header("World screen shake (финальные секунды)")]
-    public Transform mainCamera;                      // Transform мировой/экранной камеры
-    public bool      enableWorldShake = true;
-    public float     shakeLastSeconds = 2.0f;
-    public float     shakeIntensity   = 1.0f;
-    public float     shakePosAmplitude = 0.08f;
-    public float     shakeRotAmplitude = 0.8f;
-    public float     shakeFrequency    = 14f;
-    public AnimationCurve shakeCurve   = AnimationCurve.EaseInOut(0,0, 1,1);
+    [Header("Shake timing / curve")]
+    public bool   enableWorldShake = true;      // используется как флаг в ApplyWorldShake
+    public float  shakeLastSeconds = 2.0f;
+    public float  shakeIntensity   = 1.0f;
+    public AnimationCurve shakeCurve = AnimationCurve.EaseInOut(0,0,1,1);
 
     [Header("Item FX (optional)")]
-    public bool   enableItemFX = false;          // вкл/выкл «дыхание»
-    public float  itemPulseFrequency = 1.5f;     // Гц
-    public float  itemPulseScaleAmp = 0.06f;     // амплитуда масштаба (0.06 = ±6%)
-    public bool   itemPulseTint = false;         // пульсировать цветом?
-    public Color  itemPulseColor = Color.white;  // целевой цвет пульса
-    [Range(0f,1f)]
-    public float  itemPulseTintAmount = 0.2f;    // насколько сильный тинт
+    public bool  enableItemFX = false;
+    public float itemPulseFrequency = 1.5f;
+    public float itemPulseScaleAmp = 0.06f;
+    public bool  itemPulseTint = false;
+    public Color itemPulseColor = Color.white;
+    [Range(0f,1f)] public float itemPulseTintAmount = 0.2f;
 
     [Header("Flow")]
-    public bool      advanceLevelWhenDone = true;
+    public bool advanceLevelWhenDone = true;
+
+    // ---------- Cinemachine ----------
+    [Header("Cinemachine Shake (Perlin)")]
+    public Vcam vcam;
+    public Unity.Cinemachine.CinemachineBasicMultiChannelPerlin perlin;
+    [Tooltip("Брать базовые значения из Perlin на камере? Иначе — из полей ниже.")]
+    public bool readBaseFromPerlin = true;
+
+    [Tooltip("Idle-значения, если не читаем с камеры")]
+    public float baseAmplitude = 1.2f; // по запросу
+    public float baseFrequency = 0.3f; // по запросу
+
+    [Tooltip("Пиковые значения в финале материализации")]
+    public float peakAmplitude = 2.0f;
+    public float peakFrequency = 1.6f;
 
     // runtime
-    Coroutine _seq;
-    Coroutine _dotsCo;
-    Coroutine _mascotAnimCo;
-    float     _noiseStart;
-    Vector3   _camBasePos;
-    Quaternion _camBaseRot;
+    Coroutine _seq, _dotsCo, _mascotAnimCo;
+    float _noiseStart;
 
-    // Базы для отката FX
-    Vector3   _itemBaseScale = Vector3.one;
-    Color     _itemBaseColor = Color.white;
+    Vector3 _itemBaseScale = Vector3.one;
+    Color   _itemBaseColor = Color.white;
+
+    float _cmBaseAmp, _cmBaseFreq;
 
     void Awake()
     {
@@ -93,6 +105,29 @@ public class VictorySequenceController : MonoBehaviour
 
         if (crtMaterial && crtMaterial.HasProperty(noisePropName))
             _noiseStart = crtMaterial.GetFloat(noisePropName);
+
+        if (!vcam) vcam = FindAnyObjectByType<Vcam>();
+        if (!perlin && vcam)
+        {
+            perlin = vcam.GetComponent<Unity.Cinemachine.CinemachineBasicMultiChannelPerlin>()
+                  ?? vcam.GetComponentInChildren<Unity.Cinemachine.CinemachineBasicMultiChannelPerlin>(true);
+        }
+
+        if (perlin)
+        {
+            if (readBaseFromPerlin)
+            {
+                _cmBaseAmp  = perlin.AmplitudeGain;
+                _cmBaseFreq = perlin.FrequencyGain;
+            }
+            else
+            {
+                _cmBaseAmp  = baseAmplitude;
+                _cmBaseFreq = baseFrequency;
+                perlin.AmplitudeGain = _cmBaseAmp;
+                perlin.FrequencyGain = _cmBaseFreq;
+            }
+        }
     }
 
     void OnDisable()
@@ -122,17 +157,12 @@ public class VictorySequenceController : MonoBehaviour
 
     IEnumerator PlaySequenceParallel()
     {
-        // подготовка
-        if (!mainCamera && Camera.main) mainCamera = Camera.main.transform;
-        if (mainCamera) { _camBasePos = mainCamera.localPosition; _camBaseRot = mainCamera.localRotation; }
-
         if (screenCanvas) ToggleCanvas(screenCanvas, false);
         if (controller && controller.ui) controller.ui.gameObject.SetActive(false);
         if (puzzleRoot) puzzleRoot.SetActive(false);
 
         ToggleCanvas(victoryCanvas, true, deactivateVictoryCanvasGO);
 
-        // подтянуть предмет из LevelData
         var ld = controller ? controller.level : null;
         if (itemImage)
         {
@@ -141,34 +171,24 @@ public class VictorySequenceController : MonoBehaviour
                 itemImage.sprite = ld.itemSprite;
                 itemImage.enabled = true;
                 itemImage.type = Image.Type.Simple;
-                itemImage.preserveAspect = true; // вписываем в контейнер Image
+                itemImage.preserveAspect = true;
             }
-            else
-            {
-                itemImage.enabled = false;
-            }
-            SetAlpha(itemImage, itemImage.enabled ? 1f : 0f);
+            else itemImage.enabled = false;
 
-            // базы FX
-            if (itemImage)
-            {
-                _itemBaseScale = itemImage.rectTransform.localScale;
-                _itemBaseColor = itemImage.color;
-            }
+            SetAlpha(itemImage, itemImage.enabled ? 1f : 0f);
+            _itemBaseScale = itemImage.rectTransform.localScale;
+            _itemBaseColor = itemImage.color;
         }
 
-        // маскот готовим к параллельному показу
         if (mascotImage)
         {
             SetAlpha(mascotImage, 0f);
-            mascotImage.enabled = true; // проявим после задержки
-            // спрайтшит можно крутить сразу — альфа пока 0
+            mascotImage.enabled = true;
             if (_mascotAnimCo != null) StopCoroutine(_mascotAnimCo);
             if (mascotFrames != null && mascotFrames.Length > 0 && mascotFps > 0f)
                 _mascotAnimCo = StartCoroutine(AnimateMascot());
         }
 
-        // "Materialisation..." с бегущими точками — идёт до Completed
         if (materializationText)
         {
             materializationText.gameObject.SetActive(true);
@@ -176,21 +196,21 @@ public class VictorySequenceController : MonoBehaviour
             _dotsCo = StartCoroutine(Dots(materializationText, "Materialisation"));
         }
 
-        // Параллельная петля
-        float t = 0f;
+        if (perlin)
+        {
+            perlin.AmplitudeGain = _cmBaseAmp;
+            perlin.FrequencyGain = _cmBaseFreq;
+        }
 
-        // состояния параллельных фейдов
+        float t = 0f;
         bool  itemFading = false; float itemFadeElapsed = 0f; float itemStartAlpha = itemImage ? itemImage.color.a : 0f;
         bool  mascotFadingIn = false; float mascotFadeElapsed = 0f; float mascotStartAlpha = mascotImage ? mascotImage.color.a : 0f;
 
         while (t < sequenceDuration)
         {
-            // 1) Запуск фейда предмета по таймеру удержания
             if (!itemFading && itemImage && itemImage.enabled && t >= itemHoldTime)
             {
-                itemFading = true;
-                itemFadeElapsed = 0f;
-                itemStartAlpha = itemImage.color.a;
+                itemFading = true; itemFadeElapsed = 0f; itemStartAlpha = itemImage.color.a;
             }
             if (itemFading && itemImage && itemImage.enabled)
             {
@@ -199,12 +219,9 @@ public class VictorySequenceController : MonoBehaviour
                 itemFadeElapsed += Time.unscaledDeltaTime;
             }
 
-            // 2) Запуск проявления маскота после задержки
             if (!mascotFadingIn && mascotImage && t >= mascotStartDelay)
             {
-                mascotFadingIn = true;
-                mascotFadeElapsed = 0f;
-                mascotStartAlpha = mascotImage.color.a; // обычно 0
+                mascotFadingIn = true; mascotFadeElapsed = 0f; mascotStartAlpha = mascotImage.color.a;
             }
             if (mascotFadingIn && mascotImage)
             {
@@ -213,32 +230,43 @@ public class VictorySequenceController : MonoBehaviour
                 mascotFadeElapsed += Time.unscaledDeltaTime;
             }
 
-            // 3) CRT noise & shake (как раньше)
             UpdateCrtNoise(t);
-            ApplyWorldShake(t);
-
-            // 4) Item FX (опционально)
+            ApplyWorldShake(t);     // управляет только Perlin
             ApplyItemFX(t);
 
             t += Time.unscaledDeltaTime;
             yield return null;
         }
 
-        // -------- Итог: скрыть "Materialisation...", скрыть маскота, показать Completed, подержать и погасить --------
+        StopCinemachineShakeImmediate(); // сброс перед COMPLETED
+
         if (showCompletedAtEnd && completedText)
         {
-            // выключаем бегущие точки и текст загрузки
             if (_dotsCo != null) { StopCoroutine(_dotsCo); _dotsCo = null; }
             if (materializationText) materializationText.gameObject.SetActive(false);
 
-            // скрываем маскота в момент появления Completed
             if (mascotImage)
             {
                 SetAlpha(mascotImage, 0f);
                 mascotImage.enabled = false;
             }
+            var cs = FindAnyObjectByType<CinemachineLevelCameraSwitcher>();
+            cs?.SwitchToLevelAndReveal();
 
-            // показать COMPLETED (fade-in), удержать, затем fade-out
+            // >>> Добавлено: реплика героя во время показа COMPLETED
+            DialogueSystem.I?.SayHeroOnMaterialize();
+
+            // just before DialogueSystem.I?.SayHeroOnMaterialize();
+            var csc = FindAnyObjectByType<CinemachineLevelCameraSwitcher>();
+            var sw = FindAnyObjectByType<LevelSwitcher>();
+            if (csc)
+            {
+                if (sw) csc.SwitchToLevelAndReveal(sw.CurrentIndex);
+                else    csc.SwitchToLevelAndReveal(); // fallback: uses previously set id
+            }
+
+            FindAnyObjectByType<LevelAudioCueSwitcher>()?.PlayForCurrentLevel();
+
             completedText.text = completedPhrase;
             completedText.gameObject.SetActive(true);
             completedText.alpha = 0f;
@@ -253,7 +281,6 @@ public class VictorySequenceController : MonoBehaviour
             }
             completedText.alpha = 1f;
 
-            // удержание
             float hold = 0f;
             while (hold < completedHold)
             {
@@ -261,7 +288,6 @@ public class VictorySequenceController : MonoBehaviour
                 yield return null;
             }
 
-            // fade-out
             float to = 0f;
             float a0 = completedText.alpha;
             while (to < completedFadeOut)
@@ -275,12 +301,9 @@ public class VictorySequenceController : MonoBehaviour
             completedText.gameObject.SetActive(false);
         }
 
-        // -------- Сброс и переход --------
         if (_mascotAnimCo != null) { StopCoroutine(_mascotAnimCo); _mascotAnimCo = null; }
 
-        // откат FX предмета
         ResetItemFX();
-
         ResetWorldShake();
         ResetCrtNoise();
 
@@ -288,6 +311,9 @@ public class VictorySequenceController : MonoBehaviour
         if (screenCanvas) ToggleCanvas(screenCanvas, true);
         if (controller && controller.ui) controller.ui.gameObject.SetActive(true);
         if (puzzleRoot) puzzleRoot.SetActive(true);
+
+        // >>> Сигнал завершения победной последовательности (вешайте SimpleSceneLoader здесь)
+        OnSequenceCompleted?.Invoke();
 
         if (advanceLevelWhenDone)
         {
@@ -353,22 +379,28 @@ public class VictorySequenceController : MonoBehaviour
             crtMaterial.SetFloat(noisePropName, _noiseStart);
     }
 
+    // ---------- Perlin shake ----------
     void ApplyWorldShake(float sceneTime)
     {
-        if (!enableWorldShake || !mainCamera || shakeLastSeconds <= 0f || shakeIntensity <= 0f) return;
+        if (!enableWorldShake || shakeLastSeconds <= 0f || shakeIntensity <= 0f || perlin == null)
+            return;
+
         float t0 = Mathf.Max(0f, sequenceDuration - shakeLastSeconds);
         if (sceneTime < t0) return;
 
-        float nt = Mathf.InverseLerp(t0, sequenceDuration, sceneTime);
-        float k  = shakeCurve.Evaluate(nt) * shakeIntensity;
+        float k = shakeCurve.Evaluate(Mathf.InverseLerp(t0, sequenceDuration, sceneTime)) * shakeIntensity;
 
-        float n  = sceneTime * shakeFrequency;
-        float ox = (Mathf.PerlinNoise(n,  3.1f) - 0.5f) * 2f * (shakePosAmplitude * k);
-        float oy = (Mathf.PerlinNoise(n, 17.9f) - 0.5f) * 2f * (shakePosAmplitude * k);
-        float rz = (Mathf.PerlinNoise(n, 42.0f) - 0.5f) * 2f * (shakeRotAmplitude * k);
+        perlin.AmplitudeGain = Mathf.Lerp(_cmBaseAmp,  peakAmplitude,  k);
+        perlin.FrequencyGain = Mathf.Lerp(_cmBaseFreq, peakFrequency, k);
+    }
 
-        mainCamera.localPosition = _camBasePos + new Vector3(ox, oy, 0f);
-        mainCamera.localRotation = Quaternion.Euler(0f, 0f, rz) * _camBaseRot;
+    void StopCinemachineShakeImmediate()
+    {
+        if (perlin)
+        {
+            perlin.AmplitudeGain = _cmBaseAmp;
+            perlin.FrequencyGain = _cmBaseFreq;
+        }
     }
 
     // ---- Item FX ----
@@ -376,16 +408,14 @@ public class VictorySequenceController : MonoBehaviour
     {
         if (!enableItemFX || itemImage == null || !itemImage.enabled) return;
 
-        // scale "breathing"
         float s = 1f + itemPulseScaleAmp * Mathf.Sin(sceneTime * Mathf.PI * 2f * Mathf.Max(0.01f, itemPulseFrequency));
         itemImage.rectTransform.localScale = _itemBaseScale * s;
 
-        // optional tint pulse
         if (itemPulseTint)
         {
             float k = (Mathf.Sin(sceneTime * Mathf.PI * 2f * Mathf.Max(0.01f, itemPulseFrequency)) * 0.5f + 0.5f) * itemPulseTintAmount;
             var c = Color.Lerp(_itemBaseColor, itemPulseColor, k);
-            c.a = itemImage.color.a; // уважаем текущую альфу (фейды)
+            c.a = itemImage.color.a;
             itemImage.color = c;
         }
     }
@@ -400,8 +430,10 @@ public class VictorySequenceController : MonoBehaviour
 
     void ResetWorldShake()
     {
-        if (!mainCamera) return;
-        mainCamera.localPosition = _camBasePos;
-        mainCamera.localRotation = _camBaseRot;
+        if (perlin)
+        {
+            perlin.AmplitudeGain = _cmBaseAmp;
+            perlin.FrequencyGain = _cmBaseFreq;
+        }
     }
 }

@@ -29,7 +29,7 @@ public class LevelUIRenderer : MonoBehaviour
 
     [Header("Hover 3x3 highlight")]
     public bool  hoverHighlightEnabled = true;
-    public bool  highlightOnlyUnknown  = true;          // <<< ВАЖНО: подсвечивать только Unknown
+    public bool  highlightOnlyUnknown  = true;          // подсвечивать только Unknown
     public Color hoverNeighbor = new Color(0f, 1f, 0.5f, 0.16f);
     public Color hoverCenter   = new Color(0f, 1f, 0.7f, 0.26f);
 
@@ -70,6 +70,21 @@ public class LevelUIRenderer : MonoBehaviour
 
     void OnEnable()                        { FitCells(); }
     void OnRectTransformDimensionsChange() { FitCells(); }
+
+    // ДОБАВЛЕНО: безопасная «ленивая» инициализация кэшей
+    bool EnsureCached()
+    {
+        if (!_rt)   _rt   = GetComponent<RectTransform>();
+        if (!_grid) _grid = GetComponent<GridLayoutGroup>();
+        if (!container) container = _rt;
+        if (!gridImage) gridImage = GetComponent<Image>();
+        if (_scaler == null)
+        {
+            var canvas = GetComponentInParent<Canvas>();
+            _scaler = canvas ? canvas.GetComponent<CanvasScaler>() : null;
+        }
+        return (_rt && _grid);
+    }
 
     public void SetLevel(LevelData data) { level = data; Build(); FitCells(); }
 
@@ -128,7 +143,7 @@ public class LevelUIRenderer : MonoBehaviour
             var cell = go.GetComponent<Cell>();
             if (cell) _cells[i] = cell;
 
-            // Overlay-слой для подсветки (поверх клетки, но raycast выключен)
+            // Overlay-слой для подсветки
             var hlGO = new GameObject("HL", typeof(RectTransform), typeof(Image));
             var hlRT = hlGO.GetComponent<RectTransform>();
             hlRT.SetParent(go.transform, false);
@@ -150,10 +165,13 @@ public class LevelUIRenderer : MonoBehaviour
     public void FitCells()
     {
         if (!level) return;
+        if (!EnsureCached()) return; // важно для ранних вызовов
 
         if (gridImage) { gridImage.color = gridColor; gridImage.raycastTarget = false; }
 
         var host = container ? container : _rt;
+        if (!host) return; // страховка от ранних вызовов
+
         float W = Mathf.Max(0.0001f, host.rect.width);
         float H = Mathf.Max(0.0001f, host.rect.height);
 
@@ -229,8 +247,7 @@ public class LevelUIRenderer : MonoBehaviour
             var img = (_overlays != null && id < _overlays.Length) ? _overlays[id] : null;
             if (!img) continue;
 
-            // --- КЛЮЧЕВОЕ УСЛОВИЕ ---
-            // Подсвечиваем ТОЛЬКО Unknown (если флаг включён).
+            // подсвечиваем только Unknown (если флаг включён)
             if (highlightOnlyUnknown && _cells != null && id < _cells.Length && _cells[id] != null)
             {
                 var st = _cells[id].state;

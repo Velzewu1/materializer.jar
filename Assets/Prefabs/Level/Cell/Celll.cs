@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
+
 
 public class Cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler
 {
@@ -71,11 +73,14 @@ public class Cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler
 
     void Update()
     {
-        // Проверка на удержание
-        if (Input.GetMouseButtonDown(0)) isLeftHeld = true;
-        if (Input.GetMouseButtonUp(0)) isLeftHeld = false;
+        var mouse = Mouse.current;
+        if (mouse != null)
+        {
+            if (mouse.leftButton.wasPressedThisFrame)   isLeftHeld  = true;
+            if (mouse.leftButton.wasReleasedThisFrame)  isLeftHeld  = false;
 
-        if (Input.GetMouseButtonDown(1)) isRightHeld = true;
-        if (Input.GetMouseButtonUp(1)) isRightHeld = false;
+            if (mouse.rightButton.wasPressedThisFrame)  isRightHeld = true;
+            if (mouse.rightButton.wasReleasedThisFrame) isRightHeld = false;
+        }
     }
 }
